@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survey Verification</title>
+    <style>
+        :root {
+            --bg: #fafafa;
+            --card-bg: #ffffff;
+            --text: #1a1a1a;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success: #059669;
+            --error: #dc2626;
+            --error-bg: #fef2f2;
+            --success-bg: #f0fdf4;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .gate {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2.5rem 2rem;
+            max-width: 440px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+
+        .gate h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .gate .lab-name {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .gate .description {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 2rem;
+            text-align: left;
+            padding: 1rem;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .gate .description p + p {
+            margin-top: 0.5rem;
+        }
+
+        .google-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6rem;
+            width: 100%;
+            max-width: 320px;
+            margin: 0 auto;
+            padding: 0.8rem 1.5rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font-size: 0.95rem;
+            color: var(--text);
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .google-btn:hover {
+            border-color: #d1d5db;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+
+        .google-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin-top: 1.25rem;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            display: none;
+        }
+
+        .message.error {
+            display: block;
+            background: var(--error-bg);
+            color: var(--error);
+            border: 1px solid #fecaca;
+        }
+
+        .message.success {
+            display: block;
+            background: var(--success-bg);
+            color: var(--success);
+            border: 1px solid #bbf7d0;
+        }
+
+        .message.info {
+            display: block;
+            background: #eff6ff;
+            color: var(--primary);
+            border: 1px solid #bfdbfe;
+        }
+
+        .fine-print {
+            margin-top: 1.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Verified state — shown after successful auth */
+        .verified-state {
+            display: none;
+        }
+
+        .verified-state.active {
+            display: block;
+        }
+
+        .verified-state .checkmark {
+            width: 48px;
+            height: 48px;
+            background: var(--success-bg);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.5rem;
+        }
+
+        .proceed-btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.8rem 2rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+
+        .proceed-btn:hover {
+            background: var(--primary-hover);
+        }
+    </style>
+</head>
+<body>
+
+<div class="gate">
+    <!-- Sign-in state -->
+    <div id="signInState">
+        <h1>Research Study</h1>
+        <p class="lab-name">Cartmill Lab — Indiana University</p>
+
+        <div class="description">
+            <p>This study includes a paid survey. To prevent automated signups, we ask you to verify your identity with Google before proceeding.</p>
+            <p>Your email will only be used to ensure one response per participant. It will not be linked to your survey answers.</p>
+        </div>
+
+        <button class="google-btn" id="googleBtn" onclick="signInWithGoogle()">
+            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            Sign in with Google to continue
+        </button>
+
+        <div class="message" id="message"></div>
+
+        <p class="fine-print">
+            By signing in, you confirm that you are a human participant.
+            Your Google account is used for verification only.
+        </p>
+    </div>
+
+    <!-- Verified state -->
+    <div class="verified-state" id="verifiedState">
+        <div class="checkmark">&#10003;</div>
+        <h1>Verified</h1>
+        <p class="lab-name" id="verifiedEmail"></p>
+        <p style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.9rem;">
+            You've been verified as a human participant. Click below to begin the survey.
+        </p>
+        <a class="proceed-btn" id="proceedBtn" href="#">Begin Survey</a>
+        <p class="fine-print">
+            Your survey responses will not be linked to your Google account.
+        </p>
+    </div>
+</div>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<script>
+    // =============================================================
+    // CONFIGURATION — Noah: fill these in
+    // =============================================================
+
+    // 1. Create a free Supabase project at https://supabase.com
+    //    Enable Google OAuth under Authentication > Providers > Google
+    //    Add your site URL to Authentication > URL Configuration > Redirect URLs
+    const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+
+    // 2. Your Qualtrics survey URL (the normal distribution link)
+    const QUALTRICS_SURVEY_URL = 'https://iu.qualtrics.com/jfe/form/YOUR_SURVEY_ID';
+
+    // 3. Optional: restrict to specific email domains (e.g., ['.edu'])
+    //    Leave empty [] to allow any Google account
+    const ALLOWED_DOMAINS = [];
+
+    // 4. Optional: set to true to use an email whitelist (like the metamodality workspace)
+    //    If true, you'll need to create the allowed_emails table (see setup.sql)
+    const USE_WHITELIST = false;
+
+    // =============================================================
+    // APP
+    // =============================================================
+
+    let db = null;
+
+    try {
+        db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+        console.warn('Supabase init failed:', e);
+    }
+
+    function showMessage(text, type) {
+        const el = document.getElementById('message');
+        el.className = 'message ' + type;
+        el.textContent = text;
+    }
+
+    // --- Google OAuth sign-in ---
+    async function signInWithGoogle() {
+        const btn = document.getElementById('googleBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Redirecting to Google...';
+
+        if (!db) {
+            showMessage('Configuration error. Please contact the researcher.', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Sign in with Google to continue';
+            return;
+        }
+
+        try {
+            const { error } = await db.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + window.location.pathname
+                }
+            });
+            if (error) throw error;
+            // Browser will redirect to Google
+        } catch (e) {
+            showMessage('Sign-in failed: ' + e.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Sign in with Google to continue';
+        }
+    }
+
+    // --- Check email against whitelist (if enabled) ---
+    async function checkEmailAllowed(email) {
+        if (!db) return { allowed: false, reason: 'database_not_ready' };
+        if (!email) return { allowed: false, reason: 'no_email' };
+
+        try {
+            const { data, error } = await db
+                .from('allowed_emails')
+                .select('email')
+                .ilike('email', email)
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116') {
+                    return { allowed: false, reason: 'not_on_list' };
+                }
+                return { allowed: false, reason: 'database_error' };
+            }
+
+            return data ? { allowed: true } : { allowed: false, reason: 'not_on_list' };
+        } catch (e) {
+            return { allowed: false, reason: 'exception' };
+        }
+    }
+
+    // --- Check domain restriction ---
+    function checkDomain(email) {
+        if (!ALLOWED_DOMAINS.length) return true;
+        return ALLOWED_DOMAINS.some(domain => email.toLowerCase().endsWith(domain.toLowerCase()));
+    }
+
+    // --- Record verified participant & generate token ---
+    async function recordParticipant(email) {
+        // Generate a one-time token for this participant
+        const token = crypto.randomUUID();
+
+        if (!db) return token;
+
+        try {
+            const { error } = await db
+                .from('survey_participants')
+                .insert({
+                    email_hash: await hashEmail(email),
+                    token: token,
+                    verified_at: new Date().toISOString()
+                });
+
+            if (error) {
+                // If duplicate (already verified), deny re-entry
+                if (error.code === '23505') {
+                    return null; // Already participated
+                }
+                console.warn('Failed to record participant:', error);
+            }
+        } catch (e) {
+            console.warn('recordParticipant error:', e);
+        }
+
+        return token;
+    }
+
+    // --- Hash email so we don't store PII ---
+    async function hashEmail(email) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(email.toLowerCase().trim());
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // --- Build Qualtrics URL with embedded data ---
+    function buildSurveyUrl(token) {
+        const url = new URL(QUALTRICS_SURVEY_URL);
+        url.searchParams.set('gate_token', token);
+        url.searchParams.set('gate_ts', Date.now().toString());
+        return url.toString();
+    }
+
+    // --- Main auth handler (fires on page load if returning from Google) ---
+    function initAuth() {
+        if (!db) {
+            showMessage('Configuration error. Please contact the researcher.', 'error');
+            return;
+        }
+
+        db.auth.onAuthStateChange(async (event, session) => {
+            if (!session?.user) return;
+
+            const email = session.user.email;
+
+            // Domain check
+            if (!checkDomain(email)) {
+                showMessage('Access restricted. Please use an authorized email address.', 'error');
+                await db.auth.signOut();
+                return;
+            }
+
+            // Whitelist check (if enabled)
+            if (USE_WHITELIST) {
+                const result = await checkEmailAllowed(email);
+                if (!result.allowed) {
+                    showMessage('Your email is not on the participant list. Please contact the researcher.', 'error');
+                    await db.auth.signOut();
+                    return;
+                }
+            }
+
+            // Record participant & generate token
+            const token = await recordParticipant(email);
+
+            if (token === null) {
+                // Already participated
+                showMessage('This Google account has already been used to access the survey. Each participant may only complete the survey once.', 'error');
+                await db.auth.signOut();
+                return;
+            }
+
+            // Sign out immediately — we only needed to verify, not maintain a session
+            await db.auth.signOut();
+
+            // Show verified state
+            document.getElementById('signInState').style.display = 'none';
+            const verifiedState = document.getElementById('verifiedState');
+            verifiedState.classList.add('active');
+
+            // Mask email for display
+            const [local, domain] = email.split('@');
+            const masked = local.slice(0, 2) + '***@' + domain;
+            document.getElementById('verifiedEmail').textContent = 'Verified as ' + masked;
+
+            // Set survey link with token
+            document.getElementById('proceedBtn').href = buildSurveyUrl(token);
+
+            // Clean up URL hash (OAuth tokens)
+            if (window.location.hash.includes('access_token')) {
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+        });
+
+        // Check for existing session (returning from OAuth redirect)
+        db.auth.getSession();
+    }
+
+    // Boot
+    initAuth();
+</script>
+
+</body>
+</html>
