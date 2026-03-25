@@ -148,25 +148,46 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Verified state — shown after successful auth */
-        .verified-state {
-            display: none;
-        }
+        .step { display: none; }
+        .step.active { display: block; }
 
-        .verified-state.active {
+        .dog-input {
+            width: 80px;
+            padding: 0.6rem;
+            font-size: 1.2rem;
+            text-align: center;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin: 1rem auto;
             display: block;
         }
 
-        .verified-state .checkmark {
-            width: 48px;
-            height: 48px;
-            background: var(--success-bg);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1rem;
-            font-size: 1.5rem;
+        .dog-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .submit-btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.8rem 2rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .submit-btn:hover {
+            background: var(--primary-hover);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .proceed-btn {
@@ -186,15 +207,33 @@
         .proceed-btn:hover {
             background: var(--primary-hover);
         }
+
+        .checkmark {
+            width: 48px;
+            height: 48px;
+            background: var(--success-bg);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.5rem;
+        }
+
+        .remaining {
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
     </style>
 </head>
 <body>
 
 <div class="gate">
-    <!-- Sign-in state -->
-    <div id="signInState">
+    <!-- Step 1: Sign in -->
+    <div class="step active" id="stepSignIn">
         <h1>Research Study</h1>
-        <p class="lab-name">Cartmill Lab — Indiana University</p>
+        <p class="lab-name">COMPARE Lab — Indiana University</p>
 
         <div class="description">
             <p>This study includes a paid survey. To prevent automated signups, we ask you to verify your identity with Google before proceeding.</p>
@@ -214,14 +253,25 @@
         </p>
     </div>
 
-    <!-- Verified state -->
-    <div class="verified-state" id="verifiedState">
+    <!-- Step 2: How many dogs? (first-time users only) -->
+    <div class="step" id="stepDogs">
+        <h1>One more question</h1>
+        <p class="lab-name" id="dogStepEmail"></p>
+        <p style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.9rem;">
+            How many dogs do you have? You'll be able to complete the survey once per dog.
+        </p>
+        <input type="number" class="dog-input" id="dogCount" min="1" max="5" value="1">
+        <p style="font-size: 0.75rem; color: var(--text-muted);">Maximum 5</p>
+        <button class="submit-btn" id="dogSubmitBtn" onclick="submitDogCount()">Continue</button>
+        <div class="message" id="dogMessage"></div>
+    </div>
+
+    <!-- Step 3: Verified — proceed to survey -->
+    <div class="step" id="stepVerified">
         <div class="checkmark">&#10003;</div>
         <h1>Verified</h1>
         <p class="lab-name" id="verifiedEmail"></p>
-        <p style="margin-top: 0.75rem; color: var(--text-muted); font-size: 0.9rem;">
-            You've been verified as a human participant. Click below to begin the survey.
-        </p>
+        <p class="remaining" id="remainingText"></p>
         <a class="proceed-btn" id="proceedBtn" href="#">Begin Survey</a>
         <p class="fine-print">
             Your survey responses will not be linked to your Google account.
@@ -234,31 +284,26 @@
 
 <script>
     // =============================================================
-    // CONFIGURATION — Noah: fill these in
+    // CONFIGURATION
     // =============================================================
 
-    // 1. Create a free Supabase project at https://supabase.com
-    //    Enable Google OAuth under Authentication > Providers > Google
-    //    Add your site URL to Authentication > URL Configuration > Redirect URLs
     const SUPABASE_URL = 'https://plfyjdkvnlvdijkknhuy.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsZnlqZGt2bmx2ZGlqa2tuaHV5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NjA5MTYsImV4cCI6MjA5MDAzNjkxNn0.hdJCwtyLS_4Wf_7jQPmADOOCfcUZ_DVFqmMbwdrCozs';
-
-    // 2. Your Qualtrics survey URL (the normal distribution link)
     const QUALTRICS_SURVEY_URL = 'https://iu.co1.qualtrics.com/jfe/form/SV_6gsMusJef20lOwS';
-
-    // 3. Optional: restrict to specific email domains (e.g., ['.edu'])
-    //    Leave empty [] to allow any Google account
     const ALLOWED_DOMAINS = [];
-
-    // 4. Optional: set to true to use an email whitelist (like the metamodality workspace)
-    //    If true, you'll need to create the allowed_emails table (see setup.sql)
     const USE_WHITELIST = false;
+    const MAX_DOGS = 5;
+    const IP_RATE_LIMIT = 10;          // max verifications per IP
+    const IP_RATE_WINDOW_HOURS = 24;   // within this time window
 
     // =============================================================
     // APP
     // =============================================================
 
     let db = null;
+    let pendingEmail = null;
+    let pendingEmailHash = null;
+    let pendingMasked = null;
 
     try {
         db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -266,10 +311,65 @@
         console.warn('Supabase init failed:', e);
     }
 
-    function showMessage(text, type) {
-        const el = document.getElementById('message');
+    function showStep(stepId) {
+        document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+        document.getElementById(stepId).classList.add('active');
+    }
+
+    function showMessage(elId, text, type) {
+        const el = document.getElementById(elId);
         el.className = 'message ' + type;
         el.textContent = text;
+    }
+
+    // --- Get client IP ---
+    async function getClientIP() {
+        try {
+            const resp = await fetch('https://api.ipify.org?format=json');
+            const data = await resp.json();
+            return data.ip;
+        } catch (e) {
+            console.warn('[SurveyGate] Could not get IP:', e);
+            return null;
+        }
+    }
+
+    // --- Check IP rate limit ---
+    async function checkIPRateLimit(ip) {
+        if (!ip || !db) return true; // allow if we can't check
+
+        try {
+            const since = new Date(Date.now() - IP_RATE_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+            const { count, error } = await db
+                .from('ip_rate_limits')
+                .select('*', { count: 'exact', head: true })
+                .eq('ip_hash', await hashText(ip))
+                .gte('verified_at', since);
+
+            if (error) {
+                console.warn('[SurveyGate] IP rate limit check error:', error);
+                return true; // allow on error
+            }
+
+            console.log('[SurveyGate] IP verifications in window:', count);
+            return count < IP_RATE_LIMIT;
+        } catch (e) {
+            console.warn('[SurveyGate] IP rate limit exception:', e);
+            return true;
+        }
+    }
+
+    // --- Record IP usage ---
+    async function recordIPUsage(ip) {
+        if (!ip || !db) return;
+        try {
+            await db.from('ip_rate_limits').insert({
+                ip_hash: await hashText(ip),
+                verified_at: new Date().toISOString()
+            });
+        } catch (e) {
+            console.warn('[SurveyGate] Failed to record IP:', e);
+        }
     }
 
     // --- Google OAuth sign-in ---
@@ -279,7 +379,7 @@
         btn.innerHTML = '<span class="spinner"></span> Redirecting to Google...';
 
         if (!db) {
-            showMessage('Configuration error. Please contact the researcher.', 'error');
+            showMessage('message', 'Configuration error. Please contact the researcher.', 'error');
             btn.disabled = false;
             btn.textContent = 'Sign in with Google to continue';
             return;
@@ -293,9 +393,8 @@
                 }
             });
             if (error) throw error;
-            // Browser will redirect to Google
         } catch (e) {
-            showMessage('Sign-in failed: ' + e.message, 'error');
+            showMessage('message', 'Sign-in failed: ' + e.message, 'error');
             btn.disabled = false;
             btn.textContent = 'Sign in with Google to continue';
         }
@@ -314,12 +413,9 @@
                 .single();
 
             if (error) {
-                if (error.code === 'PGRST116') {
-                    return { allowed: false, reason: 'not_on_list' };
-                }
+                if (error.code === 'PGRST116') return { allowed: false, reason: 'not_on_list' };
                 return { allowed: false, reason: 'database_error' };
             }
-
             return data ? { allowed: true } : { allowed: false, reason: 'not_on_list' };
         } catch (e) {
             return { allowed: false, reason: 'exception' };
@@ -332,57 +428,134 @@
         return ALLOWED_DOMAINS.some(domain => email.toLowerCase().endsWith(domain.toLowerCase()));
     }
 
-    // --- Record verified participant & generate token ---
-    async function recordParticipant(email) {
-        // Generate a one-time token for this participant
-        const token = crypto.randomUUID();
-
-        if (!db) return token;
-
-        try {
-            const { error } = await db
-                .from('survey_participants')
-                .insert({
-                    email_hash: await hashEmail(email),
-                    token: token,
-                    verified_at: new Date().toISOString()
-                });
-
-            if (error) {
-                // If duplicate (already verified), deny re-entry
-                if (error.code === '23505') {
-                    return null; // Already participated
-                }
-                console.warn('Failed to record participant:', error);
-            }
-        } catch (e) {
-            console.warn('recordParticipant error:', e);
-        }
-
-        return token;
-    }
-
-    // --- Hash email so we don't store PII ---
-    async function hashEmail(email) {
+    // --- Hash any text (for emails and IPs) ---
+    async function hashText(text) {
         const encoder = new TextEncoder();
-        const data = encoder.encode(email.toLowerCase().trim());
+        const data = encoder.encode(text.toLowerCase().trim());
         const hashBuffer = await crypto.subtle.digest('SHA-256', data);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
+    // --- Look up existing participant ---
+    async function getParticipant(emailHash) {
+        if (!db) return null;
+        try {
+            const { data, error } = await db
+                .from('survey_participants')
+                .select('*')
+                .eq('email_hash', emailHash)
+                .single();
+
+            if (error && error.code === 'PGRST116') return null; // not found
+            if (error) { console.warn('[SurveyGate] getParticipant error:', error); return null; }
+            return data;
+        } catch (e) {
+            console.warn('[SurveyGate] getParticipant exception:', e);
+            return null;
+        }
+    }
+
+    // --- Create new participant ---
+    async function createParticipant(emailHash, allowedCount) {
+        if (!db) return true;
+        try {
+            const { error } = await db
+                .from('survey_participants')
+                .insert({
+                    email_hash: emailHash,
+                    allowed_count: allowedCount,
+                    used_count: 1,
+                    verified_at: new Date().toISOString()
+                });
+
+            if (error) {
+                console.warn('[SurveyGate] createParticipant error:', error);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.warn('[SurveyGate] createParticipant exception:', e);
+            return false;
+        }
+    }
+
+    // --- Increment used count ---
+    async function incrementUsedCount(emailHash, currentUsed) {
+        if (!db) return true;
+        try {
+            const { error } = await db
+                .from('survey_participants')
+                .update({ used_count: currentUsed + 1 })
+                .eq('email_hash', emailHash);
+
+            if (error) {
+                console.warn('[SurveyGate] incrementUsedCount error:', error);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.warn('[SurveyGate] incrementUsedCount exception:', e);
+            return false;
+        }
+    }
+
     // --- Build Qualtrics URL with embedded data ---
-    function buildSurveyUrl(token) {
+    function buildSurveyUrl() {
         const url = new URL(QUALTRICS_SURVEY_URL);
         url.searchParams.set('gate_token', 'verified');
         url.searchParams.set('gate_ts', Date.now().toString());
         return url.toString();
     }
 
-    // --- Main auth handler (fires on page load if returning from Google) ---
+    // --- Dog count submission (first-time users) ---
+    async function submitDogCount() {
+        const btn = document.getElementById('dogSubmitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+
+        let count = parseInt(document.getElementById('dogCount').value, 10);
+        if (isNaN(count) || count < 1) count = 1;
+        if (count > MAX_DOGS) count = MAX_DOGS;
+
+        console.log('[SurveyGate] Dog count:', count);
+
+        const success = await createParticipant(pendingEmailHash, count);
+        if (!success) {
+            showMessage('dogMessage', 'Something went wrong. Please try again.', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Continue';
+            return;
+        }
+
+        // Record IP
+        const ip = await getClientIP();
+        await recordIPUsage(ip);
+
+        // Show verified state
+        const remaining = count - 1;
+        showVerified(remaining, count);
+    }
+
+    // --- Show the verified/proceed screen ---
+    function showVerified(remaining, total) {
+        document.getElementById('verifiedEmail').textContent = 'Verified as ' + pendingMasked;
+
+        if (total > 1) {
+            document.getElementById('remainingText').textContent =
+                'Survey access ' + (total - remaining) + ' of ' + total + ' (' + remaining + ' remaining after this)';
+        } else {
+            document.getElementById('remainingText').textContent = '';
+        }
+
+        document.getElementById('proceedBtn').href = buildSurveyUrl();
+        showStep('stepVerified');
+    }
+
+    // --- Main auth handler ---
     function initAuth() {
         if (!db) {
-            showMessage('Configuration error. Please contact the researcher.', 'error');
+            showMessage('message', 'Configuration error. Please contact the researcher.', 'error');
             return;
         }
 
@@ -395,7 +568,7 @@
 
             // Domain check
             if (!checkDomain(email)) {
-                showMessage('Access restricted. Please use an authorized email address.', 'error');
+                showMessage('message', 'Access restricted. Please use an authorized email address.', 'error');
                 await db.auth.signOut();
                 return;
             }
@@ -404,48 +577,65 @@
             if (USE_WHITELIST) {
                 const result = await checkEmailAllowed(email);
                 if (!result.allowed) {
-                    showMessage('Your email is not on the participant list. Please contact the researcher.', 'error');
+                    showMessage('message', 'Your email is not on the participant list. Please contact the researcher.', 'error');
                     await db.auth.signOut();
                     return;
                 }
             }
 
-            // Record participant & generate token
-            console.log('[SurveyGate] Recording participant...');
-            const token = await recordParticipant(email);
-            console.log('[SurveyGate] Token:', token);
-
-            if (token === null) {
-                // Already participated
-                showMessage('This Google account has already been used to access the survey. Each participant may only complete the survey once.', 'error');
+            // IP rate limit check
+            const ip = await getClientIP();
+            const ipAllowed = await checkIPRateLimit(ip);
+            if (!ipAllowed) {
+                showMessage('message', 'Too many verification attempts from this network. Please try again later or contact the researcher.', 'error');
                 await db.auth.signOut();
                 return;
             }
 
-            // Save what we need before signing out
+            // Prepare email info
+            const emailHash = await hashText(email);
             const [local, domainPart] = email.split('@');
-            const masked = local.slice(0, 2) + '***@' + domainPart;
-            const surveyUrl = buildSurveyUrl(token);
+            pendingEmail = email;
+            pendingEmailHash = emailHash;
+            pendingMasked = local.slice(0, 2) + '***@' + domainPart;
 
-            // Sign out immediately — we only needed to verify, not maintain a session
-            // Remove listener first so signOut doesn't reset the UI
+            // Sign out — we only needed to verify identity
             db.auth.onAuthStateChange(() => {});
             await db.auth.signOut();
 
-            // Clean up URL hash (OAuth tokens)
+            // Clean up URL hash
             if (window.location.hash.includes('access_token')) {
                 history.replaceState(null, '', window.location.pathname + window.location.search);
             }
 
-            // Show verified state
-            document.getElementById('signInState').style.display = 'none';
-            const verifiedState = document.getElementById('verifiedState');
-            verifiedState.classList.add('active');
-            document.getElementById('verifiedEmail').textContent = 'Verified as ' + masked;
-            document.getElementById('proceedBtn').href = surveyUrl;
+            // Check if returning participant
+            const existing = await getParticipant(emailHash);
+            console.log('[SurveyGate] Existing participant:', existing);
+
+            if (existing) {
+                // Returning user — check if they have accesses left
+                if (existing.used_count >= existing.allowed_count) {
+                    showMessage('message', 'You have used all ' + existing.allowed_count + ' survey access(es) for this account.', 'error');
+                    return;
+                }
+
+                // Increment and let through
+                const ok = await incrementUsedCount(emailHash, existing.used_count);
+                if (!ok) {
+                    showMessage('message', 'Something went wrong. Please try again.', 'error');
+                    return;
+                }
+
+                await recordIPUsage(ip);
+                const remaining = existing.allowed_count - existing.used_count - 1;
+                showVerified(remaining, existing.allowed_count);
+            } else {
+                // New user — ask how many dogs
+                document.getElementById('dogStepEmail').textContent = pendingMasked;
+                showStep('stepDogs');
+            }
         });
 
-        // Check for existing session (returning from OAuth redirect)
         db.auth.getSession();
     }
 
