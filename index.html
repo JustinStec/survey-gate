@@ -387,9 +387,11 @@
         }
 
         db.auth.onAuthStateChange(async (event, session) => {
+            console.log('[SurveyGate] Auth event:', event, 'Has session:', !!session?.user);
             if (!session?.user) return;
 
             const email = session.user.email;
+            console.log('[SurveyGate] User email:', email);
 
             // Domain check
             if (!checkDomain(email)) {
@@ -409,7 +411,9 @@
             }
 
             // Record participant & generate token
+            console.log('[SurveyGate] Recording participant...');
             const token = await recordParticipant(email);
+            console.log('[SurveyGate] Token:', token);
 
             if (token === null) {
                 // Already participated
@@ -418,26 +422,27 @@
                 return;
             }
 
+            // Save what we need before signing out
+            const [local, domainPart] = email.split('@');
+            const masked = local.slice(0, 2) + '***@' + domainPart;
+            const surveyUrl = buildSurveyUrl(token);
+
             // Sign out immediately — we only needed to verify, not maintain a session
+            // Remove listener first so signOut doesn't reset the UI
+            db.auth.onAuthStateChange(() => {});
             await db.auth.signOut();
-
-            // Show verified state
-            document.getElementById('signInState').style.display = 'none';
-            const verifiedState = document.getElementById('verifiedState');
-            verifiedState.classList.add('active');
-
-            // Mask email for display
-            const [local, domain] = email.split('@');
-            const masked = local.slice(0, 2) + '***@' + domain;
-            document.getElementById('verifiedEmail').textContent = 'Verified as ' + masked;
-
-            // Set survey link with token
-            document.getElementById('proceedBtn').href = buildSurveyUrl(token);
 
             // Clean up URL hash (OAuth tokens)
             if (window.location.hash.includes('access_token')) {
                 history.replaceState(null, '', window.location.pathname + window.location.search);
             }
+
+            // Show verified state
+            document.getElementById('signInState').style.display = 'none';
+            const verifiedState = document.getElementById('verifiedState');
+            verifiedState.classList.add('active');
+            document.getElementById('verifiedEmail').textContent = 'Verified as ' + masked;
+            document.getElementById('proceedBtn').href = surveyUrl;
         });
 
         // Check for existing session (returning from OAuth redirect)
