@@ -374,7 +374,7 @@
     // --- Build Qualtrics URL with embedded data ---
     function buildSurveyUrl(token) {
         const url = new URL(QUALTRICS_SURVEY_URL);
-        url.searchParams.set('gate_token', token);
+        url.searchParams.set('gate_token', 'verified');
         url.searchParams.set('gate_ts', Date.now().toString());
         return url.toString();
     }
